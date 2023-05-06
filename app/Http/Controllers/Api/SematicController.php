@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Define;
+use App\Models\Keyphrase;
 use App\Models\OntoKeyphraseRelationship;
 use App\Models\Relationship;
 use App\Models\Semantic;
@@ -13,8 +14,17 @@ use SplPriorityQueue;
 
 class SematicController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $q = $request->input('q');
+        $keyphrasesDB = Keyphrase::all();
+        $keyphrases = [];
+        foreach ($keyphrasesDB as $value) {
+            array_push($keyphrases, $value->text);
+        }
+
+        $keyphrase_query = $this->query($q, $keyphrases);
+
         $semantics = Semantic::with('Graph')->get();
         $graphs = [];
 
@@ -46,10 +56,7 @@ class SematicController extends Controller
             ]);
         }
 
-        $keyphrase_query = [
-            'Đồ thị',
-            'Đồ thị liên thông',
-        ];
+
         $pairing = [];
         for ($i = 0; $i < count($keyphrase_query) - 1; $i++) {
             for ($j = $i + 1; $j < count($keyphrase_query); $j++) {
@@ -87,7 +94,7 @@ class SematicController extends Controller
             }
         }
 
-        $getDefine = Define::query()->whereHas("Semantic", function($query) use ($max_weight_element){
+        $getDefine = Define::query()->whereHas("Semantic", function ($query) use ($max_weight_element) {
             return $query->where("id", $max_weight_element["semantic_id"]);
         })->first();
 
@@ -148,7 +155,7 @@ class SematicController extends Controller
         return null;
     }
 
-    function checkExistKeyphraseinGraph($graph,$keyphrase_query)
+    function checkExistKeyphraseinGraph($graph, $keyphrase_query)
     {
         $checkK = [];
         foreach ($graph["graph"] as $key => $value) {
@@ -162,5 +169,18 @@ class SematicController extends Controller
         }
 
         return $checkIn;
+    }
+
+    function query($input, $keyphrases) {
+        $keyphrase_query = [];
+        
+        
+        foreach ($keyphrases as $value) {
+            if (strpos(mb_strtolower($input), mb_strtolower($value)) !== false) {
+                array_push($keyphrase_query, $value);
+            }
+        }
+
+        return $keyphrase_query;
     }
 }
