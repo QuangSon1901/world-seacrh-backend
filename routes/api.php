@@ -20,4 +20,4 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 });
 
 Route::get('/semantic', [SematicController::class, 'index']);
-Route::get('/test', [SematicController::class, 'test']);
+Route::get('/check-query', [SematicController::class, 'check_query']);
