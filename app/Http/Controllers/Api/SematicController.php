@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Concept;
 use App\Models\Define;
 use App\Models\Keyphrase;
+use App\Models\Node;
 use App\Models\OntoKeyphraseRelationship;
 use App\Models\Relationship;
 use App\Models\Semantic;
@@ -353,12 +355,129 @@ class SematicController extends Controller
         return $graph_query;
     }
 
-    public function check_query(Request $request) {
+    public function check_query(Request $request)
+    {
         $q = $request->input('q');
 
 
         $handle_query = $this->query($q);
         return response()->json(["ok" => true, "result" => $handle_query], 200);
+    }
 
+    public function t_node()
+    {
+        $nodes = Node::query()->has('NodeFather')->orderBy('z_index', 'ASC')->get();
+        $result = [];
+        foreach ($nodes as $value) {
+            $childrens = Node::query()->select('id', 'label')->whereHas("NodeChildren", function ($query) use ($value) {
+                return $query->where('id_node_father', $value->id);
+            })->orderBy('z_index', 'ASC')->get();
+            array_push($result, [
+                "id" => $value->id,
+                "label" => $value->label,
+                "childrens" => $childrens
+            ]);
+        }
+        return response()->json(["ok" => true, "result" => $result], 200);
+    }
+
+    public function search_keyword()
+    {
+        $keywords = ["Định nghĩa", "Đồ thị có hướng"];
+
+        $known = [];
+        $related_keyword = [];
+        $r_known = [];
+
+        $concepts = Concept::with("Components")->get();
+
+        foreach ($concepts as $concept) {
+            $num_c = 0;
+            foreach ($keywords as $keyword) {
+                if (strpos(mb_strtolower($concept->name), mb_strtolower($keyword))  !== false) {
+                    $num_c++;
+                }
+            }
+
+            $result = [];
+
+            if (count($concept->components) > 0) {
+                $def = [];
+                foreach ($concept->components as $component) {
+                    $num_cp = 0;
+                    foreach ($keywords as $keyword) {
+                        if (strpos(mb_strtolower($component->name), mb_strtolower($keyword))  !== false) {
+                            $num_cp++;
+                        }
+                    }
+                    if ($num_cp > 0) {
+                        $def[] = [
+                            "component" => $component,
+                            "num" => $num_cp
+                        ];
+                    } else {
+                        $def[] = [
+                            "component" => $component,
+                            "num" => 0
+                        ];
+                    }
+                }
+                if (count($def) > 0) {
+                    array_multisort(array_column($def, 'num'), SORT_DESC, $def);
+                }
+            }
+
+            if ($num_c > 0) {
+                $known[] = [
+                    "concept" => [
+                        "id" => $concept->id,
+                        "symbol" => $concept->symbol,
+                        "name" => $concept->name,
+                        "components" => isset($def) && count($def) > 0 ? $def : $concept->components
+                    ],
+                    "num" => $num_c
+                ];
+            }
+        }
+
+        return response()->json(["ok" => true, "result" => $known], 200);
+    }
+
+    public function search_syntax()
+    {
+        $ks = ["Định nghĩa", "Ví dụ"];
+        $conditions = [];
+        $es = ["Đồ thị"];
+        $result = [];
+
+        $concepts = Concept::with("Components")->get();
+        foreach ($concepts as $concept) {
+            $num_c = 0;
+            foreach ($es as $e) {
+                if (strpos(mb_strtolower($concept->name), mb_strtolower($e))  !== false) {
+                    $num_c++;
+                }
+            }
+
+            if ($num_c > 0) {
+                $list_par = [];
+                if (count($concept->components) > 0) {
+                    foreach ($concept->components as $component) {
+                        foreach ($ks as $k) {
+                            if (strpos(mb_strtolower($component->name), mb_strtolower($k))  !== false) {
+                                $list_par[] = $component;
+                            }
+                        }
+                    }
+                }
+
+                if (count($list_par) > 0) {
+                    $result[] = [
+                        "concept" => $list_par
+                    ]; 
+                }
+            }
+        }
+        return response()->json(["ok" => true, "result" => $result], 200);
     }
 }
