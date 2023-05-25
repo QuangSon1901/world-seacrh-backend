@@ -72,7 +72,6 @@ class SematicController extends Controller
         }
 
         $result = [];
-        // return response()->json(["ok" => true, "result" => $graphs], 200);
 
         foreach ($graphs as $graph) {
             $check = $this->checkExistKeyphraseinGraph($graph, $keyphrase_query);
@@ -205,7 +204,7 @@ class SematicController extends Controller
         $keyphrase_query = $this->rut_trich_keyphrase_query($input, $done_keyphrases);
         // ===
 
-
+        
         if (count($keyphrase_query) <= 1) {
             return [
                 "type" => "keyphrase",
@@ -218,12 +217,12 @@ class SematicController extends Controller
             "biểu diễn",
             "liên quan",
             "của",
+            "bằng",
             "trong",
             "về",
         ];
         $relation_query = $this->rut_trich_relation_query($input, $relations);
         // ===
-
 
         // === Xây dựng đồ thị cho cấu truy vấn
         $graph_query = $this->bien_truy_van_sang_do_thi($input, $relation_query, $keyphrase_query);
@@ -271,7 +270,7 @@ class SematicController extends Controller
         }
 
         usort($relation_query, function ($a, $b) {
-            return $b['position'] + $a['position'];
+            return $a['position'] - $b['position'];
         });
 
         $done_relation = [];
@@ -456,7 +455,7 @@ class SematicController extends Controller
             $result[] = [
                 "id" => $value['component']['id'],
                 "name" => $value['component']['name'],
-                "text" => $value['component']['content'],
+                "content" => $value['component']['content'],
             ];
         }
 
@@ -507,7 +506,7 @@ class SematicController extends Controller
             $res[] = [
                 "id" => $value['id'],
                 "name" => $value['name'],
-                "text" => $value['content'],
+                "content" => $value['content'],
             ];
         }
         return response()->json(["ok" => true, "result" => $res], 200);
