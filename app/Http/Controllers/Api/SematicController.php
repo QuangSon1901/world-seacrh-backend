@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Component;
 use App\Models\Concept;
 use App\Models\Define;
 use App\Models\Keyphrase;
@@ -20,14 +21,14 @@ class SematicController extends Controller
     {
         $q = $request->input('q');
 
-
         $handle_query = $this->query($q);
         if ($handle_query['type'] === 'keyphrase') {
-            $define = Define::where('name', 'like', '%' . $handle_query['keyphrase'] . '%')->first();
+            $define = Component::where('name', 'like', '%' . $handle_query['keyphrase'] . '%')->get();
             return response()->json(["ok" => true, "result" => $define], 200);
         }
 
-        $semantics = Semantic::with('Graph')->get();
+        $semantics = Component::with('Graph')->get();
+
         $graphs = [];
 
         foreach ($semantics as $semantic) {
@@ -53,7 +54,7 @@ class SematicController extends Controller
             }
 
             array_push($graphs, [
-                "semantic_id" => $semantic->id,
+                "id_component" => $semantic->id,
                 "graph" => $k_result
             ]);
         }
@@ -71,6 +72,8 @@ class SematicController extends Controller
         }
 
         $result = [];
+        // return response()->json(["ok" => true, "result" => $graphs], 200);
+
         foreach ($graphs as $graph) {
             $check = $this->checkExistKeyphraseinGraph($graph, $keyphrase_query);
             if (!$check) {
@@ -82,7 +85,7 @@ class SematicController extends Controller
                 $weight += $shortestPathTree["weight"];
             }
             array_push($result, [
-                "semantic_id" => $graph["semantic_id"],
+                "id_component" => $graph["id_component"],
                 "weight" => $weight / count($pairing)
             ]);
         }
@@ -97,9 +100,10 @@ class SematicController extends Controller
             }
         }
 
-        $getDefine = Define::query()->whereHas("Semantic", function ($query) use ($max_weight_element) {
-            return $query->where("id", $max_weight_element["semantic_id"]);
-        })->first();
+        // $getDefine = Define::query()->whereHas("Semantic", function ($query) use ($max_weight_element) {
+        //     return $query->where("id", $max_weight_element["id_component"]);
+        // })->get();
+        $getDefine = Component::where("id", $max_weight_element["id_component"])->get();
 
         return response()->json(["ok" => true, "result" => $getDefine], 200);
     }
@@ -201,6 +205,7 @@ class SematicController extends Controller
         $keyphrase_query = $this->rut_trich_keyphrase_query($input, $done_keyphrases);
         // ===
 
+
         if (count($keyphrase_query) <= 1) {
             return [
                 "type" => "keyphrase",
@@ -210,15 +215,19 @@ class SematicController extends Controller
 
         // === Rút các relation
         $relations = [
-            "của",
+            "biểu diễn",
             "liên quan",
-            "trong"
+            "của",
+            "trong",
+            "về",
         ];
         $relation_query = $this->rut_trich_relation_query($input, $relations);
         // ===
 
+
         // === Xây dựng đồ thị cho cấu truy vấn
         $graph_query = $this->bien_truy_van_sang_do_thi($input, $relation_query, $keyphrase_query);
+
         return [
             "type" => "graph",
             "graph" => $graph_query
@@ -369,7 +378,7 @@ class SematicController extends Controller
         $nodes = Node::query()->has('NodeFather')->orderBy('z_index', 'ASC')->get();
         $result = [];
         foreach ($nodes as $value) {
-            $childrens = Node::query()->select('id', 'label')->whereHas("NodeChildren", function ($query) use ($value) {
+            $childrens = Node::query()->select('id', 'label', 'content')->whereHas("NodeChildren", function ($query) use ($value) {
                 return $query->where('id_node_father', $value->id);
             })->orderBy('z_index', 'ASC')->get();
             array_push($result, [
@@ -381,9 +390,10 @@ class SematicController extends Controller
         return response()->json(["ok" => true, "result" => $result], 200);
     }
 
-    public function search_keyword()
+    public function search_keyword(Request $request)
     {
-        $keywords = ["Định nghĩa", "Đồ thị có hướng"];
+        $q = $request->input('q');
+        $keywords = explode(",", $q);
 
         $known = [];
         $related_keyword = [];
@@ -394,7 +404,7 @@ class SematicController extends Controller
         foreach ($concepts as $concept) {
             $num_c = 0;
             foreach ($keywords as $keyword) {
-                if (strpos(mb_strtolower($concept->name), mb_strtolower($keyword))  !== false) {
+                if (strpos(trim(mb_strtolower($concept->name)), trim(mb_strtolower($keyword)))  !== false) {
                     $num_c++;
                 }
             }
@@ -406,7 +416,7 @@ class SematicController extends Controller
                 foreach ($concept->components as $component) {
                     $num_cp = 0;
                     foreach ($keywords as $keyword) {
-                        if (strpos(mb_strtolower($component->name), mb_strtolower($keyword))  !== false) {
+                        if (strpos(trim(mb_strtolower($component->name)), trim(mb_strtolower($keyword)))  !== false) {
                             $num_cp++;
                         }
                     }
@@ -440,21 +450,34 @@ class SematicController extends Controller
             }
         }
 
-        return response()->json(["ok" => true, "result" => $known], 200);
+        array_multisort(array_column($known, 'num'), SORT_DESC, $known);
+        $result = [];
+        foreach ($known[0]['concept']['components'] as $value) {
+            $result[] = [
+                "id" => $value['component']['id'],
+                "name" => $value['component']['name'],
+                "text" => $value['component']['content'],
+            ];
+        }
+
+        return response()->json(["ok" => true, "result" => $result], 200);
     }
 
-    public function search_syntax()
+    public function search_syntax(Request $request)
     {
-        $ks = ["Định nghĩa", "Ví dụ"];
-        $conditions = [];
-        $es = ["Đồ thị"];
+        $q = $request->input('q');
+        $explode_q = explode("|", $q);
+
+        $ks = explode(",", $explode_q[0]);
+        $conditions = explode(",", $explode_q[1]);
+        $es = explode(",", $explode_q[2]);
         $result = [];
 
         $concepts = Concept::with("Components")->get();
         foreach ($concepts as $concept) {
             $num_c = 0;
             foreach ($es as $e) {
-                if (strpos(mb_strtolower($concept->name), mb_strtolower($e))  !== false) {
+                if (strpos(trim(mb_strtolower($concept->name)), trim(mb_strtolower($e)))  !== false) {
                     $num_c++;
                 }
             }
@@ -464,7 +487,7 @@ class SematicController extends Controller
                 if (count($concept->components) > 0) {
                     foreach ($concept->components as $component) {
                         foreach ($ks as $k) {
-                            if (strpos(mb_strtolower($component->name), mb_strtolower($k))  !== false) {
+                            if (strpos(trim(mb_strtolower($component->name)), trim(mb_strtolower($k)))  !== false) {
                                 $list_par[] = $component;
                             }
                         }
@@ -474,10 +497,19 @@ class SematicController extends Controller
                 if (count($list_par) > 0) {
                     $result[] = [
                         "concept" => $list_par
-                    ]; 
+                    ];
                 }
             }
         }
-        return response()->json(["ok" => true, "result" => $result], 200);
+
+        $res = [];
+        foreach ($result[0]['concept'] as $value) {
+            $res[] = [
+                "id" => $value['id'],
+                "name" => $value['name'],
+                "text" => $value['content'],
+            ];
+        }
+        return response()->json(["ok" => true, "result" => $res], 200);
     }
 }

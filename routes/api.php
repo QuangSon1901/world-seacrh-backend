@@ -19,9 +19,9 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/semantic', [SematicController::class, 'index']);
+Route::get('/natural', [SematicController::class, 'index']);
 Route::get('/check-query', [SematicController::class, 'check_query']);
 
 Route::get('/t-node', [SematicController::class, 't_node']);
-Route::get('/search-keyword', [SematicController::class, 'search_keyword']);
-Route::get('/search-syntax', [SematicController::class, 'search_syntax']);
+Route::get('/keyphrase', [SematicController::class, 'search_keyword']);
+Route::get('/syntax', [SematicController::class, 'search_syntax']);
