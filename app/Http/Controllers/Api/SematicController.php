@@ -14,6 +14,7 @@ use App\Models\Semantic;
 use App\Models\SemanticKeyphraseRelationship;
 use App\Models\Weight;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use SplPriorityQueue;
 
 class SematicController extends Controller
@@ -86,7 +87,9 @@ class SematicController extends Controller
             $weight = 0;
             foreach ($pairing as $keyphrases) {
                 $shortestPathTree = $this->shortestPathTree($graph["graph"], $keyphrases[0], $keyphrases[1]);
-                return response()->json(["ok" => true, "result" => $shortestPathTree], 200);
+                if (!$shortestPathTree) {
+                    continue;
+                }
                 $weight += $shortestPathTree["weight"];
             }
 
@@ -109,80 +112,124 @@ class SematicController extends Controller
             array_push($result, [
                 "id_component" => $graph["id_component"],
                 "weight" => (($weight / count($pairing)) + $total) / 2,
+                "is_k" => $graph["is_k"]
             ]);
         }
 
-        return response()->json(["ok" => true, "result" => $result], 200);
-        $max_weight = 0;
-        $max_weight_element = null;
+        $sortedArray = collect($result)->sortByDesc('is_k')->sortByDesc('weight')->values()->all();
 
-        foreach ($result as $element) {
-            if ($element['weight'] > $max_weight) {
-                $max_weight = $element['weight'];
-                $max_weight_element = $element;
-            }
+        $max_weight = array_shift($sortedArray);
+        $relate_components = [];
+        foreach ($sortedArray as $value) {
+            $component = Component::where("id", $value["id_component"])->first();
+            array_push($relate_components, [
+                "type" => $component->TypeComponent->name,
+                "concept" => [
+                    "id" => $component->id,
+                    "name" => $component->name,
+                    "content" => $component->content,
+                ]
+            ]);
+        }
+        $groupedData = collect($relate_components)->groupBy('type')->map(function ($items, $type) {
+            return [
+                'type' => $type,
+                'array' => $items->all(),
+            ];
+        })->values()->all();
+
+        $main = Component::where("id", $max_weight["id_component"])->first();
+        if ($main->TypeComponent->name === "Định nghĩa") {
+            $main_more = Component::query()->whereHas("TypeComponent", function ($query) {
+                return $query->where("name", "Ví dụ");
+            })->first();
         }
 
-        // $getDefine = Define::query()->whereHas("Semantic", function ($query) use ($max_weight_element) {
-        //     return $query->where("id", $max_weight_element["id_component"]);
-        // })->get();
-        $getDefine = Component::where("id", $max_weight_element["id_component"])->get();
-
-        return response()->json(["ok" => true, "result" => $getDefine], 200);
+        if (isset($main_more)) {
+            $main_all = [
+                [
+                    "id" => $main->id,
+                    "name" => $main->name,
+                    "content" => $main->content,
+                    "type" => $main->TypeComponent->name,
+                ],
+                [
+                    "id" => $main_more->id,
+                    "name" => $main_more->name,
+                    "content" => $main_more->content,
+                    "type" => $main_more->TypeComponent->name,
+                ],
+            ];
+        } else {
+            $main_all = [
+                [
+                    "id" => $main->id,
+                    "name" => $main->name,
+                    "content" => $main->content,
+                    "type" => $main->TypeComponent->name,
+                ],
+            ];
+        }
+        return response()->json(["ok" => true, "result" => [
+            "main" => $main_all,
+            "relate" => $groupedData
+        ]], 200);
     }
 
     function shortestPathTree($graph, $start, $end)
     {
-        $queue = [];
-        $visited = [];
-        $distances = [];
-        $previous = [];
+        try {
+            $queue = [];
+            $visited = [];
+            $distances = [];
+            $previous = [];
 
-        // Khởi tạo khoảng cách ban đầu là vô cùng cho tất cả các đỉnh
-        foreach ($graph as $vertex => $edges) {
-            $distances[$vertex] = INF;
-        }
-
-        // Bắt đầu từ đỉnh bắt đầu và đưa nó vào queue
-        $queue[] = [$start, 0];
-        $distances[$start] = 0;
-
-        // Duyệt qua đồ thị
-        while (!empty($queue)) {
-            // Lấy ra đỉnh đầu tiên trong queue
-            list($current, $distance) = array_shift($queue);
-
-            // Đánh dấu đỉnh hiện tại đã được thăm
-            $visited[$current] = true;
-
-            // Nếu đến được đỉnh kết thúc, trả về khoảng cách và đường đi
-            if ($current === $end) {
-                $path = [$current];
-                while ($previous[$current] !== $start) {
-                    array_unshift($path, $previous[$current]);
-                    $current = $previous[$current];
-                }
-                array_unshift($path, $start);
-                return ["distance" => $distance, "weight" => $distance / (count($path) - 1), "path" => $path];
+            // Khởi tạo khoảng cách ban đầu là vô cùng cho tất cả các đỉnh
+            foreach ($graph as $vertex => $edges) {
+                $distances[$vertex] = INF;
             }
 
-            // Duyệt qua tất cả các đỉnh kề với đỉnh hiện tại
-            foreach ($graph[$current] as $neighbor => $weight) {
-                if (!isset($visited[$neighbor])) {
-                    // Đưa đỉnh kề vào queue
-                    $queue[] = [$neighbor, $distance + $weight];
+            // Bắt đầu từ đỉnh bắt đầu và đưa nó vào queue
+            $queue[] = [$start, 0];
+            $distances[$start] = 0;
 
-                    // Cập nhật trọng số của cạnh để đến được đỉnh kề
-                    if ($distance + $weight < $distances[$neighbor]) {
-                        $distances[$neighbor] = $distance + $weight;
-                        $previous[$neighbor] = $current;
+            // Duyệt qua đồ thị
+            while (!empty($queue)) {
+                // Lấy ra đỉnh đầu tiên trong queue
+                list($current, $distance) = array_shift($queue);
+
+                // Đánh dấu đỉnh hiện tại đã được thăm
+                $visited[$current] = true;
+
+                // Nếu đến được đỉnh kết thúc, trả về khoảng cách và đường đi
+                if ($current === $end) {
+                    $path = [$current];
+                    while ($previous[$current] !== $start) {
+                        array_unshift($path, $previous[$current]);
+                        $current = $previous[$current];
+                    }
+                    array_unshift($path, $start);
+                    return ["distance" => $distance, "weight" => $distance / (count($path) - 1), "path" => $path];
+                }
+
+                // Duyệt qua tất cả các đỉnh kề với đỉnh hiện tại
+                foreach ($graph[$current] as $neighbor => $weight) {
+                    if (!isset($visited[$neighbor])) {
+                        // Đưa đỉnh kề vào queue
+                        $queue[] = [$neighbor, $distance + $weight];
+
+                        // Cập nhật trọng số của cạnh để đến được đỉnh kề
+                        if ($distance + $weight < $distances[$neighbor]) {
+                            $distances[$neighbor] = $distance + $weight;
+                            $previous[$neighbor] = $current;
+                        }
                     }
                 }
             }
+        } catch (\Throwable $th) {
+            // Nếu không tìm thấy đường đi từ đỉnh bắt đầu đến đỉnh kết thúc
+            return null;
         }
-
-        // Nếu không tìm thấy đường đi từ đỉnh bắt đầu đến đỉnh kết thúc
-        return null;
     }
 
     function checkExistKeyphraseinGraph($graph, $keyphrase_query)

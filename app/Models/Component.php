@@ -13,4 +13,8 @@ class Component extends Model
     public function Graph() {
         return $this->hasMany(Graph::class, "id_component");
     }
+
+    public function TypeComponent() {
+        return $this->belongsTo(TypeComponent::class, "id_type_component");
+    }
 }
