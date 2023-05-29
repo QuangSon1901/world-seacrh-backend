@@ -583,4 +583,163 @@ class SematicController extends Controller
         }
         return response()->json(["ok" => true, "result" => $res], 200);
     }
+
+    public function test()
+    {
+        $semantics = Component::with('Graph')->doesntHave('Weight')->get();
+
+        $graphs = [];
+
+        foreach ($semantics as $semantic) {
+            $keyphrase = [];
+
+            foreach ($semantic->graph as $graph) {
+                array_push($keyphrase, $graph->KeyphraseFirst->text);
+                array_push($keyphrase, $graph->KeyphraseSecond->text);
+            }
+
+            $keyphrase = array_values(array_unique($keyphrase));
+            if (count($keyphrase) <= 0) {
+                continue;
+            }
+
+            array_push($graphs, [
+                "id_component" => $semantic->id,
+                "concept_name" => $semantic->Concept->name ?? $semantic->RelationCC->name ?? $semantic->Rule->name ?? $semantic->Method->name ?? $semantic->Function->name ?? $semantic->Operator->name,
+                "component_name" => $semantic->name,
+                "content" => $semantic->content,
+                "graph" => $keyphrase
+            ]);
+        }
+
+        // ==== Lấy và sắp xếp keyphrase từ csdl
+        $keyphrasesDB = Keyphrase::all();
+        $keyphrases = [];
+        foreach ($keyphrasesDB as $value) {
+            $arr = explode(" ", $value->text);
+            array_push($keyphrases, [
+                "id" => $value->id,
+                "text" => $value->text,
+                "length" => count($arr),
+            ]);
+        }
+
+        usort($keyphrases, function ($a, $b) {
+            return $b['length'] - $a['length'];
+        });
+
+        $result = [];
+
+        foreach ($graphs as $graph) {
+            $concept_name = $this->rut_trich_keyphrase_query_new($graph['concept_name'], $keyphrases, 0.9);
+            $component_name = $this->rut_trich_keyphrase_query_new($graph['component_name'], $keyphrases, 0.8);
+            $content = $this->rut_trich_keyphrase_query_new($graph['content'], $keyphrases, 0.7);
+            $mergedArray = array_merge($concept_name, $component_name, $content);
+
+            // Tính số lượng keyphrase trùng lặp
+            $keyphraseCounts = [];
+            $keyphraseWeights = [];
+            $keyphraseAllWeights = [];
+
+            foreach ($mergedArray as $keyphrase) {
+                $phrase = $keyphrase['keyphrase'];
+                $weight = $keyphrase['weight'];
+
+                if (array_key_exists($phrase, $keyphraseCounts)) {
+                    $keyphraseCounts[$phrase][0]++;
+
+                    if ($weight > $keyphraseWeights[$phrase]) {
+                        $keyphraseWeights[$phrase] = $weight;
+                    }
+                } else {
+                    $keyphraseCounts[$phrase][0] = 1;
+                    $keyphraseWeights[$phrase] = $weight;
+                }
+                if (array_key_exists($phrase, $keyphraseAllWeights)) {
+                    array_push($keyphraseAllWeights[$phrase], $weight);
+                } else {
+                    $keyphraseAllWeights[$phrase] = [$weight];
+                }
+                $keyphraseCounts[$phrase][1] = $keyphrase['id'];
+            }
+            $keyphraseAllWeights = array_map('array_unique', $keyphraseAllWeights);
+
+            $cal_keyphrases = [];
+            foreach ($keyphraseCounts as $phrase => $count) {
+                $maxWeight = $keyphraseWeights[$phrase];
+                $cal_keyphrases[] = [
+                    "id" => $count[1],
+                    "keyphrase" => $phrase,
+                    "num" => $count[0],
+                    "weight" => $maxWeight,
+                    "all_weight" => $keyphraseAllWeights[$phrase]
+                ];
+            }
+
+            $collection = collect($cal_keyphrases);
+            $sorted = $collection->sortByDesc('num');
+            $largestNumElement = $sorted->first();
+
+            $end_cal = [];
+
+            foreach ($cal_keyphrases as $value) {
+                $tf = 0.5 + (1 - 0.5) * ($value['num'] / $largestNumElement['num']);
+
+                $ip = $value['weight'] + (1 - $value['weight']) * (array_sum($value['all_weight']) / (0.9 + 0.8 + 0.7));
+
+                $end_cal[] = [
+                    "id" => $value['id'],
+                    "keyphrase" => $value['keyphrase'],
+                    "num" => $value['num'],
+                    "weight" => $value['weight'],
+                    "all_weight" => $value['all_weight'],
+                    "tf" => $tf,
+                    "ip" => $ip,
+                ];
+            }
+
+            // ==== Result
+            $result[] = [
+                "graph" => $graph,
+                "cal_keyphrases" => $end_cal,
+            ];
+        }
+
+        // Insert data
+        foreach ($result as $value) {
+            foreach ($value['cal_keyphrases'] as $key) {
+                Weight::create([
+                    "id_keyphrase" => $key['id'],
+                    "id_component" => $value['graph']['id_component'],
+                    "tf" => $key['tf'],
+                    "ip" => $key['ip'],
+                ]);
+            }
+        }
+
+        return response()->json(["ok" => true, "result" => $result], 200);
+    }
+
+    function rut_trich_keyphrase_query_new($input, $keyphrases, $weight)
+    {
+        $keyphrase_query = [];
+        $input = mb_strtolower($input);
+
+        foreach ($keyphrases as $value) {
+            for ($i = 0; $i < 10; $i++) {
+                $value_text = mb_strtolower($value['text']);
+                if (strpos($input, $value_text) !== false) {
+                    array_push($keyphrase_query, [
+                        "id" => $value['id'],
+                        "keyphrase" => $value_text,
+                        "weight" => $weight
+                    ]);
+                    $value_edit = "/$value_text/";
+                    $input = preg_replace($value_edit, "", $input, 1);
+                }
+            }
+        }
+
+        return $keyphrase_query;
+    }
 }

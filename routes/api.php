@@ -25,3 +25,5 @@ Route::get('/check-query', [SematicController::class, 'check_query']);
 Route::get('/t-node', [SematicController::class, 't_node']);
 Route::get('/keyphrase', [SematicController::class, 'search_keyword']);
 Route::get('/syntax', [SematicController::class, 'search_syntax']);
+
+// Route::get('/test', [SematicController::class, 'test']);
