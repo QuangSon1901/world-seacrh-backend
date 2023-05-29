@@ -12,6 +12,7 @@ use App\Models\OntoKeyphraseRelationship;
 use App\Models\Relationship;
 use App\Models\Semantic;
 use App\Models\SemanticKeyphraseRelationship;
+use App\Models\Weight;
 use Illuminate\Http\Request;
 use SplPriorityQueue;
 
@@ -75,20 +76,43 @@ class SematicController extends Controller
 
         foreach ($graphs as $graph) {
             $check = $this->checkExistKeyphraseinGraph($graph, $keyphrase_query);
-            if (!$check) {
-                continue;
-            }
+            // return response()->json(["ok" => true, "result" => $check], 200);
+            // if (!$check) {
+            //     continue;
+            // }
+
+            $graph["is_k"] = $check;
+
             $weight = 0;
             foreach ($pairing as $keyphrases) {
                 $shortestPathTree = $this->shortestPathTree($graph["graph"], $keyphrases[0], $keyphrases[1]);
+                return response()->json(["ok" => true, "result" => $shortestPathTree], 200);
                 $weight += $shortestPathTree["weight"];
             }
+
+            $get_weight_db = Weight::with("Keyphrase")->where("id_component", $graph["id_component"])->get();
+            $sum = 0;
+            $count = 0;
+            foreach ($get_weight_db as $value) {
+                if (in_array(mb_strtolower($value->keyphrase->text), $keyphrase_query)) {
+                    $sum += $value->tf * $value->ip;
+                    $count++;
+                }
+            }
+
+            if ($count <= 0) {
+                continue;
+            }
+
+            $total = $sum / $count;
+
             array_push($result, [
                 "id_component" => $graph["id_component"],
-                "weight" => $weight / count($pairing)
+                "weight" => (($weight / count($pairing)) + $total) / 2,
             ]);
         }
 
+        return response()->json(["ok" => true, "result" => $result], 200);
         $max_weight = 0;
         $max_weight_element = null;
 
@@ -167,10 +191,10 @@ class SematicController extends Controller
         foreach ($graph["graph"] as $key => $value) {
             array_push($checkK, $key);
         }
-        $checkIn = true;
+        $checkIn = 0;
         foreach ($keyphrase_query as $value) {
-            if (!in_array($value, $checkK)) {
-                $checkIn = false;
+            if (in_array($value, $checkK)) {
+                $checkIn++;
             }
         }
 
@@ -204,7 +228,7 @@ class SematicController extends Controller
         $keyphrase_query = $this->rut_trich_keyphrase_query($input, $done_keyphrases);
         // ===
 
-        
+
         if (count($keyphrase_query) <= 1) {
             return [
                 "type" => "keyphrase",
@@ -220,6 +244,7 @@ class SematicController extends Controller
             "bằng",
             "trong",
             "về",
+            "có"
         ];
         $relation_query = $this->rut_trich_relation_query($input, $relations);
         // ===
