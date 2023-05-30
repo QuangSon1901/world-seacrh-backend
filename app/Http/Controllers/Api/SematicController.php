@@ -5,17 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Component;
 use App\Models\Concept;
-use App\Models\Define;
 use App\Models\Keyphrase;
 use App\Models\Node;
-use App\Models\OntoKeyphraseRelationship;
-use App\Models\Relationship;
-use App\Models\Semantic;
-use App\Models\SemanticKeyphraseRelationship;
 use App\Models\Weight;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
-use SplPriorityQueue;
 
 class SematicController extends Controller
 {
@@ -24,10 +17,10 @@ class SematicController extends Controller
         $q = $request->input('q');
 
         $handle_query = $this->query($q);
-        if ($handle_query['type'] === 'keyphrase') {
-            $define = Component::where('name', 'like', '%' . $handle_query['keyphrase'] . '%')->get();
-            return response()->json(["ok" => true, "result" => $define], 200);
-        }
+        // if ($handle_query['type'] === 'keyphrase') {
+        //     $define = Component::where('name', 'like', '%' . $handle_query['keyphrase'] . '%')->get();
+        //     return response()->json(["ok" => true, "result" => $define], 200);
+        // }
 
         $semantics = Component::with('Graph')->get();
 
@@ -62,35 +55,37 @@ class SematicController extends Controller
         }
 
         $keyphrase_query = [];
-        foreach ($handle_query['graph'] as $key => $value) {
-            $keyphrase_query[] = key((array)$value);
-        }
-
         $pairing = [];
-        for ($i = 0; $i < count($keyphrase_query) - 1; $i++) {
-            for ($j = $i + 1; $j < count($keyphrase_query); $j++) {
-                $pairing[] = [$keyphrase_query[$i], $keyphrase_query[$j]];
+        if ($handle_query['type'] === 'keyphrase') {
+            $keyphrase_query[] = $handle_query['keyphrase'];
+        } else {
+            // foreach ($handle_query['graph'] as $key => $value) {
+            //     $keyphrase_query[] = key((array)$value);
+            // }
+            $keyphrase_query = $handle_query['graph'];
+            for ($i = 0; $i < count($keyphrase_query) - 1; $i++) {
+                for ($j = $i + 1; $j < count($keyphrase_query); $j++) {
+                    $pairing[] = [$keyphrase_query[$i], $keyphrase_query[$j]];
+                }
             }
         }
+        // return response()->json(["ok" => true, "result" => $keyphrase_query], 200);
 
         $result = [];
 
         foreach ($graphs as $graph) {
+            $weight = 1;
             $check = $this->checkExistKeyphraseinGraph($graph, $keyphrase_query);
-            // return response()->json(["ok" => true, "result" => $check], 200);
-            // if (!$check) {
-            //     continue;
-            // }
-
             $graph["is_k"] = $check;
-
-            $weight = 0;
-            foreach ($pairing as $keyphrases) {
-                $shortestPathTree = $this->shortestPathTree($graph["graph"], $keyphrases[0], $keyphrases[1]);
-                if (!$shortestPathTree) {
-                    continue;
+            if ($handle_query['type'] === 'graph') {
+                $weight = 0;
+                foreach ($pairing as $keyphrases) {
+                    $shortestPathTree = $this->shortestPathTree($graph["graph"], $keyphrases[0], $keyphrases[1]);
+                    if (!$shortestPathTree) {
+                        continue;
+                    }
+                    $weight += $shortestPathTree["weight"];
                 }
-                $weight += $shortestPathTree["weight"];
             }
 
             $get_weight_db = Weight::with("Keyphrase")->where("id_component", $graph["id_component"])->get();
@@ -108,10 +103,11 @@ class SematicController extends Controller
             }
 
             $total = $sum / $count;
+            $count_pairing = count($pairing) <= 0 ? 1 : count($pairing);
 
             array_push($result, [
                 "id_component" => $graph["id_component"],
-                "weight" => (($weight / count($pairing)) + $total) / 2,
+                "weight" => (($weight / $count_pairing) + $total) / 2,
                 "is_k" => $graph["is_k"]
             ]);
         }
@@ -275,11 +271,15 @@ class SematicController extends Controller
         $keyphrase_query = $this->rut_trich_keyphrase_query($input, $done_keyphrases);
         // ===
 
-
         if (count($keyphrase_query) <= 1) {
             return [
                 "type" => "keyphrase",
                 "keyphrase" => $keyphrase_query[0]
+            ];
+        } else {
+            return [
+                "type" => "graph",
+                "graph" => $keyphrase_query
             ];
         }
 
