@@ -19,11 +19,14 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-Route::get('/natural', [SematicController::class, 'index']);
+Route::get('/keyphrase', [SematicController::class, 'index']);
 Route::get('/check-query', [SematicController::class, 'check_query']);
 
 Route::get('/t-node', [SematicController::class, 't_node']);
-Route::get('/keyphrase', [SematicController::class, 'search_keyword']);
+Route::get('/keyword', [SematicController::class, 'search_keyword']);
 Route::get('/syntax', [SematicController::class, 'search_syntax']);
+
+Route::get('/parent-node', [SematicController::class, 'get_parent_node']);
+Route::post('/add-node', [SematicController::class, 'add_node']);
 
 // Route::get('/test', [SematicController::class, 'test']);

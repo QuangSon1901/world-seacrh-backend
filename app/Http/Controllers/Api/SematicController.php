@@ -7,6 +7,7 @@ use App\Models\Component;
 use App\Models\Concept;
 use App\Models\Keyphrase;
 use App\Models\Node;
+use App\Models\RelationNode;
 use App\Models\Weight;
 use Illuminate\Http\Request;
 
@@ -69,7 +70,6 @@ class SematicController extends Controller
                 }
             }
         }
-        // return response()->json(["ok" => true, "result" => $keyphrase_query], 200);
 
         $result = [];
 
@@ -124,6 +124,7 @@ class SematicController extends Controller
                     "id" => $component->id,
                     "name" => $component->name,
                     "content" => $component->content,
+                    "weight" => $value['weight']
                 ]
             ]);
         }
@@ -148,6 +149,7 @@ class SematicController extends Controller
                     "name" => $main->name,
                     "content" => $main->content,
                     "type" => $main->TypeComponent->name,
+                    "weight" => $max_weight["weight"]
                 ],
                 [
                     "id" => $main_more->id,
@@ -741,5 +743,29 @@ class SematicController extends Controller
         }
 
         return $keyphrase_query;
+    }
+
+    function get_parent_node()
+    {
+        $nodes = Node::query()->has('NodeFather')->orderBy('z_index', 'ASC')->get();
+        return response()->json(["ok" => true, "result" => $nodes], 200);
+    }
+
+    function add_node(Request $request)
+    {
+        $created = Node::create([
+            "label" => $request->label,
+            "content" => $request->content,
+            "status" => 1,
+            "z_index" => $request->z_index,
+        ]);
+
+        if ($created && $request->node_parent) {
+            RelationNode::create([
+                "id_node_father" => $request->node_parent,
+                "id_node_children" => $created->id
+            ]);
+        }
+        return response()->json(["ok" => true, "message" => "Thành công!"], 200);
     }
 }
