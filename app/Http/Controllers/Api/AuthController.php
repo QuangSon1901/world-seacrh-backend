@@ -68,7 +68,7 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        Auth::logout();
+        auth()->user()->tokens()->delete();
 
         return response()->json(['ok' => true, 'message' => 'Đăng xuất thành công!']);
     }

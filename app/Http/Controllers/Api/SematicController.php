@@ -5,17 +5,35 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Component;
 use App\Models\Concept;
+use App\Models\HistorySearch;
 use App\Models\Keyphrase;
 use App\Models\Node;
 use App\Models\RelationNode;
 use App\Models\Weight;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Date;
 
 class SematicController extends Controller
 {
     public function index(Request $request)
     {
         $q = $request->input('q');
+
+        $user = auth('sanctum')->user();
+        if ($user) {
+            $check_his = HistorySearch::where('content', $q)->where('type', 'KEYPHRASE')->where('id_user', $user->id)->first();
+            if ($check_his) {
+                HistorySearch::where('id', $check_his->id)->update([
+                    'created_at' => now()
+                ]);
+            } else {
+                HistorySearch::create([
+                    'content' => $q,
+                    'type' => 'KEYPHRASE',
+                    'id_user' => $user->id
+                ]);
+            }
+        }
 
         $handle_query = $this->query($q);
         // if ($handle_query['type'] === 'keyphrase') {
@@ -113,6 +131,30 @@ class SematicController extends Controller
         }
 
         $sortedArray = collect($result)->sortByDesc('is_k')->sortByDesc('weight')->values()->all();
+
+        if ($request->suggest === 'true') {
+            $suggests = [];
+            $suggest_count = 0;
+            foreach ($sortedArray as $value) {
+
+                if ($suggest_count >= 2) {
+                    break;
+                }
+
+                $suggests_component = Component::where("id", $value["id_component"])->first();
+                array_push($suggests, [
+                    "type" => $suggests_component->TypeComponent->name,
+                    "concept" => [
+                        "id" => $suggests_component->id,
+                        "name" => $suggests_component->name,
+                        "content" => $suggests_component->content,
+                        "weight" => $value['weight']
+                    ]
+                ]);
+                $suggest_count++;
+            }
+            return response()->json(["ok" => true, "result" => $suggests], 200);
+        }
 
         $max_weight = array_shift($sortedArray);
         $relate_components = [];

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\SearchController;
 use App\Http\Controllers\Api\SematicController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -40,4 +41,7 @@ Route::post('/logout', [AuthController::class, 'logout']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/user-info', [AuthController::class, 'getUser']);
+
+    Route::get('/get-history-search', [SearchController::class, 'getHistorySearch']);
+    Route::delete('/delete-all-history', [SearchController::class, 'deleteAllHistory']);
 });
