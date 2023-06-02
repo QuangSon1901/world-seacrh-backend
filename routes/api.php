@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\SematicController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -30,3 +31,13 @@ Route::get('/parent-node', [SematicController::class, 'get_parent_node']);
 Route::post('/add-node', [SematicController::class, 'add_node']);
 
 // Route::get('/test', [SematicController::class, 'test']);
+
+Route::post('/register', [AuthController::class, 'register']);
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/logout', [AuthController::class, 'logout']);
+
+
+Route::middleware(['auth:sanctum'])->group(function () {
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::get('/user-info', [AuthController::class, 'getUser']);
+});
