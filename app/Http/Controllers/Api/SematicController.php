@@ -7,8 +7,10 @@ use App\Models\Component;
 use App\Models\Concept;
 use App\Models\HistorySearch;
 use App\Models\Keyphrase;
+use App\Models\Method;
 use App\Models\Node;
 use App\Models\RelationNode;
+use App\Models\TypeComponent;
 use App\Models\Weight;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
@@ -508,32 +510,104 @@ class SematicController extends Controller
     public function search_keyword(Request $request)
     {
         $q = $request->input('q');
-        $keywords = explode(",", $q);
+        $filterType = explode('|', $request->type);
 
+        $user = auth('sanctum')->user();
+        if ($user) {
+            $check_his = HistorySearch::where('content', $q)->where('type', 'KEYWORD')->where('id_user', $user->id)->first();
+            if ($check_his) {
+                HistorySearch::where('id', $check_his->id)->update([
+                    'created_at' => now()
+                ]);
+            } else {
+                HistorySearch::create([
+                    'content' => $q,
+                    'type' => 'KEYWORD',
+                    'id_user' => $user->id
+                ]);
+            }
+        }
+        
         $known = [];
         $related_keyword = [];
         $r_known = [];
 
-        $concepts = Concept::with("Components")->get();
-
-        foreach ($concepts as $concept) {
-            $num_c = 0;
-            foreach ($keywords as $keyword) {
-                if (strpos(trim(mb_strtolower($concept->name)), trim(mb_strtolower($keyword)))  !== false) {
-                    $num_c++;
-                }
+        foreach ($filterType as $type) {
+            $concepts_know = [];
+            if ($type === 'concept') {
+                $concepts = Concept::has("Components")->with("Components")->get();
+                $concepts_know = $this->xu_ly_search_kw($concepts, $q);
             }
 
-            $result = [];
+            $methods_know = [];
+            if ($type === 'method') {
+                $methods = Method::has("Components")->with("Components")->get();
+                $methods_know = $this->xu_ly_search_kw($methods, $q);
+            }
+
+            $known = [...$concepts_know, ...$methods_know];
+        }
+
+        if (count($known) > 0) {
+            array_multisort(array_column($known, 'num'), SORT_DESC, $known);
+
+            $max_weight = array_shift($known);
+            $relate_components = [];
+            foreach ($known as $value) {
+                foreach ($value['concept']['components'] as  $component) {
+                    $type_com = TypeComponent::where('id', $component['component']['id_type_component'])->first();
+                    array_push($relate_components, [
+                        "type" => $type_com->name,
+                        "concept" => [
+                            "id" => $component['component']['id'],
+                            "name" => $component['component']['name'],
+                            "content" => $component['component']['content'],
+                        ]
+                    ]);
+                }
+            }
+            $groupedData = collect($relate_components)->groupBy('type')->map(function ($items, $type) {
+                return [
+                    'type' => $type,
+                    'array' => $items->all(),
+                ];
+            })->values()->all();
+
+
+            $main_all = [];
+            foreach ($max_weight['concept']['components'] as $value) {
+                $type_com = TypeComponent::where('id', $value['component']['id_type_component'])->first();
+                $main_all[] = [
+                    "id" => $value['component']['id'],
+                    "name" => $value['component']['name'],
+                    "content" => $value['component']['content'],
+                    "type" => $type_com->name,
+                ];
+            }
+
+            return response()->json(["ok" => true, "result" => [
+                "main" => $main_all,
+                "relate" => $groupedData
+            ]], 200);
+        }
+        return response()->json(["ok" => false], 400);
+    }
+
+    function xu_ly_search_kw($concepts, $q)
+    {
+        $known = [];
+        foreach ($concepts as $concept) {
+            $num_c = 0;
+            if (strpos(trim(mb_strtolower($concept->name)), trim(mb_strtolower($q)))  !== false) {
+                $num_c++;
+            }
 
             if (count($concept->components) > 0) {
                 $def = [];
                 foreach ($concept->components as $component) {
                     $num_cp = 0;
-                    foreach ($keywords as $keyword) {
-                        if (strpos(trim(mb_strtolower($component->name)), trim(mb_strtolower($keyword)))  !== false) {
-                            $num_cp++;
-                        }
+                    if (strpos(trim(mb_strtolower($component->name)), trim(mb_strtolower($q)))  !== false) {
+                        $num_cp++;
                     }
                     if ($num_cp > 0) {
                         $def[] = [
@@ -565,17 +639,7 @@ class SematicController extends Controller
             }
         }
 
-        array_multisort(array_column($known, 'num'), SORT_DESC, $known);
-        $result = [];
-        foreach ($known[0]['concept']['components'] as $value) {
-            $result[] = [
-                "id" => $value['component']['id'],
-                "name" => $value['component']['name'],
-                "content" => $value['component']['content'],
-            ];
-        }
-
-        return response()->json(["ok" => true, "result" => $result], 200);
+        return $known;
     }
 
     public function search_syntax(Request $request)

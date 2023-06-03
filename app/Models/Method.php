@@ -9,4 +9,8 @@ class Method extends Model
 {
     use HasFactory;
     protected $table = 'methods';
+
+    public function Components() {
+        return $this->hasMany(Component::class, "id_method");
+    }
 }

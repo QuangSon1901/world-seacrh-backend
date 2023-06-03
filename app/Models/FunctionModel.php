@@ -9,4 +9,8 @@ class FunctionModel extends Model
 {
     use HasFactory;
     protected $table = 'funcs';
+
+    public function Components() {
+        return $this->hasMany(Component::class, "id_func");
+    }
 }
