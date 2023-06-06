@@ -13,4 +13,8 @@ class Concept extends Model
     public function Components() {
         return $this->hasMany(Component::class, "id_concept");
     }
+
+    public function Weight () {
+        return $this->belongsTo(Weight::class, "id_component");
+    }
 }

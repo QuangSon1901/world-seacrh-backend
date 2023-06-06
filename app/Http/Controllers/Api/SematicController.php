@@ -180,11 +180,11 @@ class SematicController extends Controller
         })->values()->all();
 
         $main = Component::where("id", $max_weight["id_component"])->first();
-        if ($main->TypeComponent->name === "Định nghĩa") {
-            $main_more = Component::query()->whereHas("TypeComponent", function ($query) {
-                return $query->where("name", "Ví dụ");
-            })->first();
-        }
+        // if ($main->TypeComponent->name === "Định nghĩa") {
+        //     $main_more = Component::query()->whereHas("TypeComponent", function ($query) {
+        //         return $query->where("name", "Ví dụ");
+        //     })->first();
+        // }
 
         if (isset($main_more)) {
             $main_all = [
@@ -195,12 +195,12 @@ class SematicController extends Controller
                     "type" => $main->TypeComponent->name,
                     "weight" => $max_weight["weight"]
                 ],
-                [
-                    "id" => $main_more->id,
-                    "name" => $main_more->name,
-                    "content" => $main_more->content,
-                    "type" => $main_more->TypeComponent->name,
-                ],
+                // [
+                //     "id" => $main_more->id,
+                //     "name" => $main_more->name,
+                //     "content" => $main_more->content,
+                //     "type" => $main_more->TypeComponent->name,
+                // ],
             ];
         } else {
             $main_all = [
@@ -510,7 +510,7 @@ class SematicController extends Controller
     public function search_keyword(Request $request)
     {
         $q = $request->input('q');
-        $filterType = explode('|', $request->type);
+        $filterType = $request->type ? explode('|', $request->type) : [];
 
         $user = auth('sanctum')->user();
         if ($user) {
@@ -527,26 +527,136 @@ class SematicController extends Controller
                 ]);
             }
         }
-        
+
         $known = [];
         $related_keyword = [];
         $r_known = [];
 
-        foreach ($filterType as $type) {
-            $concepts_know = [];
-            if ($type === 'concept') {
-                $concepts = Concept::has("Components")->with("Components")->get();
-                $concepts_know = $this->xu_ly_search_kw($concepts, $q);
-            }
+        $main = [];
 
-            $methods_know = [];
-            if ($type === 'method') {
-                $methods = Method::has("Components")->with("Components")->get();
-                $methods_know = $this->xu_ly_search_kw($methods, $q);
-            }
+        $concepts_know = [];
+        $methods_know = [];
+        $rules_know = [];
+        $funcs_know = [];
 
-            $known = [...$concepts_know, ...$methods_know];
+
+        if (count($filterType) > 0) {
+            foreach ($filterType as $type) {
+                if ($type === 'concept') {
+                    $concepts = Component::has("Concept")->get();
+                    $concepts_know = $this->xu_ly_search_kw($concepts, $q);
+                }
+
+                if ($type === 'method') {
+                    $methods = Component::has("Method")->get();
+                    $methods_know = $this->xu_ly_search_kw($methods, $q);
+                }
+
+                if ($type === 'rule') {
+                    $rules = Component::has("Rule")->get();
+                    $rules_know = $this->xu_ly_search_kw($rules, $q);
+                }
+
+                if ($type === 'func') {
+                    $funcs = Component::has("Function")->get();
+                    $funcs_know = $this->xu_ly_search_kw($funcs, $q);
+                }
+            }
+        } else {
+            $concepts = Component::has("Concept")->get();
+            $concepts_know = $this->xu_ly_search_kw($concepts, $q);
+
+            $methods = Component::has("Method")->get();
+            $methods_know = $this->xu_ly_search_kw($methods, $q);
+
+            $rules = Component::has("Rule")->get();
+            $rules_know = $this->xu_ly_search_kw($rules, $q);
+
+            $funcs = Component::has("Function")->get();
+            $funcs_know = $this->xu_ly_search_kw($funcs, $q);
         }
+
+
+        if (count($concepts_know) > 0) {
+            $known['concepts'] = $concepts_know;
+            $main[] = [
+                ...array_shift($known['concepts']),
+                "type" => "Khái niệm"
+            ];
+            $array = [];
+            foreach ($known['concepts'] as $value) {
+                $array[] = [
+                    "type" => "Khái niệm",
+                    "concept" => $value
+                ];
+            }
+            $r_known[] = [
+                "type" => "Khái niệm",
+                "array" => $array
+            ];
+        }
+
+        if (count($methods_know) > 0) {
+            $known['methods'] = $methods_know;
+            $main[] = [
+                ...array_shift($known['methods']),
+                "type" => "Bài toán"
+            ];
+            $array = [];
+            foreach ($known['methods'] as $value) {
+                $array[] = [
+                    "type" => "Bài toán",
+                    "concept" => $value
+                ];
+            }
+            $r_known[] = [
+                "type" => "Bài toán",
+                "array" => $array
+            ];
+        }
+
+        if (count($rules_know) > 0) {
+            $known['rules'] = $rules_know;
+            $main[] = [
+                ...array_shift($known['rules']),
+                "type" => "Quy tắc"
+            ];
+            $array = [];
+            foreach ($known['rules'] as $value) {
+                $array[] = [
+                    "type" => "Quy tắc",
+                    "concept" => $value
+                ];
+            }
+            $r_known[] = [
+                "type" => "Quy tắc",
+                "array" => $array
+            ];
+        }
+
+        if (count($funcs_know) > 0) {
+            $known['func'] = $funcs_know;
+            $main[] = [
+                ...array_shift($known['func']),
+                "type" => "Phương pháp/ Thuật giải"
+            ];
+            $array = [];
+            foreach ($known['func'] as $value) {
+                $array[] = [
+                    "type" => "Phương pháp/ Thuật giải",
+                    "concept" => $value
+                ];
+            }
+            $r_known[] = [
+                "type" => "Phương pháp/ Thuật giải",
+                "array" => $array
+            ];
+        }
+
+        return response()->json(["ok" => true, "result" => [
+            "main" => $main,
+            "relate" => $r_known
+        ]], 200);
 
         if (count($known) > 0) {
             array_multisort(array_column($known, 'num'), SORT_DESC, $known);
@@ -598,45 +708,82 @@ class SematicController extends Controller
         $known = [];
         foreach ($concepts as $concept) {
             $num_c = 0;
-            if (strpos(trim(mb_strtolower($concept->name)), trim(mb_strtolower($q)))  !== false) {
-                $num_c++;
+
+            // ==== Lấy và sắp xếp keyphrase từ csdl
+            $keyphrasesDB = Keyphrase::all();
+            $keyphrases = [];
+            foreach ($keyphrasesDB as $value) {
+                $arr = explode(" ", $value->text);
+                array_push($keyphrases, [
+                    "text" => $value->text,
+                    "length" => count($arr),
+                ]);
             }
 
-            if (count($concept->components) > 0) {
-                $def = [];
-                foreach ($concept->components as $component) {
-                    $num_cp = 0;
-                    if (strpos(trim(mb_strtolower($component->name)), trim(mb_strtolower($q)))  !== false) {
-                        $num_cp++;
-                    }
-                    if ($num_cp > 0) {
-                        $def[] = [
-                            "component" => $component,
-                            "num" => $num_cp
+            usort($keyphrases, function ($a, $b) {
+                return $b['length'] - $a['length'];
+            });
+
+            $done_keyphrases = [];
+            foreach ($keyphrases as $value) {
+                array_push($done_keyphrases, $value['text']);
+            }
+            // ===
+
+            $rt_keyphrase = $this->rut_trich_keyphrase_query($q, $done_keyphrases);
+
+            if (count($concept->Weight) > 0) {
+                foreach ($concept->Weight as $w) {
+                    if (in_array(mb_strtolower($w->Keyphrase->text), $rt_keyphrase)) {
+                        $known[] = [
+                            'id' => $concept->id,
+                            'name' => $concept->name,
+                            'content' => $concept->content,
                         ];
-                    } else {
-                        $def[] = [
-                            "component" => $component,
-                            "num" => 0
-                        ];
+                        // return ($w->tf + $w->ip) / 2;
                     }
-                }
-                if (count($def) > 0) {
-                    array_multisort(array_column($def, 'num'), SORT_DESC, $def);
                 }
             }
 
-            if ($num_c > 0) {
-                $known[] = [
-                    "concept" => [
-                        "id" => $concept->id,
-                        "symbol" => $concept->symbol,
-                        "name" => $concept->name,
-                        "components" => isset($def) && count($def) > 0 ? $def : $concept->components
-                    ],
-                    "num" => $num_c
-                ];
-            }
+            // if (strpos(trim(mb_strtolower($concept->name)), trim(mb_strtolower($q)))  !== false) {
+            //     $num_c++;
+            // }
+
+            // if (count($concept->components) > 0) {
+            //     $def = [];
+            //     foreach ($concept->components as $component) {
+            //         $num_cp = 0;
+            //         if (strpos(trim(mb_strtolower($component->name)), trim(mb_strtolower($q)))  !== false) {
+            //             $num_cp++;
+            //         }
+            //         if ($num_cp > 0) {
+            //             $def[] = [
+            //                 "component" => $component,
+            //                 "num" => $num_cp
+            //             ];
+            //         } else {
+            //             $def[] = [
+            //                 "component" => $component,
+            //                 "num" => 0
+            //             ];
+            //         }
+            //     }
+            //     if (count($def) > 0) {
+            //         array_multisort(array_column($def, 'num'), SORT_DESC, $def);
+            //     }
+            // }
+
+            // if ($num_c > 0) {
+            //     $known[] = [
+            //         "concept" => [
+            //             "id" => $concept->id,
+            //             "symbol" => $concept->symbol,
+            //             "name" => $concept->name,
+            //             "components" => isset($def) && count($def) > 0 ? $def : $concept->components
+            //         ],
+            //         "num" => $num_c
+            //     ];
+            // }
         }
 
         return $known;
@@ -683,13 +830,19 @@ class SematicController extends Controller
 
         $res = [];
         foreach ($result[0]['concept'] as $value) {
+            $type_com = TypeComponent::where('id', $value['id_type_component'])->first();
             $res[] = [
                 "id" => $value['id'],
                 "name" => $value['name'],
                 "content" => $value['content'],
+                "type" => $type_com->name,
             ];
         }
-        return response()->json(["ok" => true, "result" => $res], 200);
+
+        return response()->json(["ok" => true, "result" => [
+            "main" => $res,
+            "relate" => []
+        ]], 200);
     }
 
     public function test()
