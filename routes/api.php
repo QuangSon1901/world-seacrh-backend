@@ -31,7 +31,11 @@ Route::get('/syntax', [SematicController::class, 'search_syntax']);
 Route::get('/parent-node', [SematicController::class, 'get_parent_node']);
 Route::post('/add-node', [SematicController::class, 'add_node']);
 
-// Route::get('/test', [SematicController::class, 'test']);
+Route::get('/test', [SematicController::class, 'test']);
+Route::get('/graph', [SematicController::class, 'graph']);
+
+Route::get('/get-content', [SematicController::class, 'getContent']);
+Route::post('/add-content', [SematicController::class, 'addContent']);
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);

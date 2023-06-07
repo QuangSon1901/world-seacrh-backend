@@ -10,6 +10,13 @@ class Concept extends Model
     use HasFactory;
     protected $table = 'concepts';
 
+    protected $fillable = [
+        'name',
+        'symbol',
+        'updated_at',
+        'created_at',
+    ];
+
     public function Components() {
         return $this->hasMany(Component::class, "id_concept");
     }

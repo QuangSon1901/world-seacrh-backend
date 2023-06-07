@@ -9,4 +9,11 @@ class Rule extends Model
 {
     use HasFactory;
     protected $table = 'rules';
+
+    protected $fillable = [
+        'name',
+        'id_type_rule',
+        'updated_at',
+        'created_at',
+    ];
 }

@@ -26,6 +26,10 @@ class Component extends Model
         return $this->belongsTo(Concept::class, "id_concept");
     }
 
+    public function Problem() {
+        return $this->belongsTo(Problem::class, "id_problem");
+    }
+
     public function RelationCC() {
         return $this->belongsTo(RelationCC::class, "id_relationcc");
     }

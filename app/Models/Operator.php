@@ -9,4 +9,11 @@ class Operator extends Model
 {
     use HasFactory;
     protected $table = 'ops';
+
+    protected $fillable = [
+        'name',
+        'symbol',
+        'updated_at',
+        'created_at',
+    ];
 }

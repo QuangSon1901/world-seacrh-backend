@@ -847,9 +847,10 @@ class SematicController extends Controller
 
     public function test()
     {
-        $semantics = Component::with('Graph')->doesntHave('Weight')->get();
+        $semantics = Component::with('Graph')->has('Graph')->doesntHave('Weight')->get();
 
         $graphs = [];
+
 
         foreach ($semantics as $semantic) {
             $keyphrase = [];
@@ -866,13 +867,15 @@ class SematicController extends Controller
 
             array_push($graphs, [
                 "id_component" => $semantic->id,
-                "concept_name" => $semantic->Concept->name ?? $semantic->RelationCC->name ?? $semantic->Rule->name ?? $semantic->Method->name ?? $semantic->Function->name ?? $semantic->Operator->name,
+                "concept_name" => $semantic->Concept->name ?? $semantic->RelationCC->name ?? $semantic->Rule->name ?? $semantic->Method->name ?? $semantic->Function->name ?? $semantic->Operator->name ?? $semantic->Problem->name ?? "",
                 "component_name" => $semantic->name,
                 "content" => $semantic->content,
                 "graph" => $keyphrase
             ]);
         }
-
+        
+        // return response()->json(["ok" => true, "result" => $graphs], 200);
+        
         // ==== Lấy và sắp xếp keyphrase từ csdl
         $keyphrasesDB = Keyphrase::all();
         $keyphrases = [];
@@ -896,6 +899,8 @@ class SematicController extends Controller
             $component_name = $this->rut_trich_keyphrase_query_new($graph['component_name'], $keyphrases, 0.8);
             $content = $this->rut_trich_keyphrase_query_new($graph['content'], $keyphrases, 0.7);
             $mergedArray = array_merge($concept_name, $component_name, $content);
+            // $diff = array_diff($graph['graph'], array_column($mergedArray, 'keyphrase'));
+            // return response()->json(["ok" => true, "result" => $diff], 200);
 
             // Tính số lượng keyphrase trùng lặp
             $keyphraseCounts = [];
@@ -924,6 +929,11 @@ class SematicController extends Controller
                 $keyphraseCounts[$phrase][1] = $keyphrase['id'];
             }
             $keyphraseAllWeights = array_map('array_unique', $keyphraseAllWeights);
+            $lowercaseArray = [];
+            foreach ($graph['graph'] as $item) {
+                $lowercaseArray[] = mb_strtolower($item);
+            }
+            $diff = array_diff($lowercaseArray, array_keys($keyphraseAllWeights));
 
             $cal_keyphrases = [];
             foreach ($keyphraseCounts as $phrase => $count) {
@@ -956,6 +966,19 @@ class SematicController extends Controller
                     "all_weight" => $value['all_weight'],
                     "tf" => $tf,
                     "ip" => $ip,
+                ];
+            }
+
+            foreach ($diff as $value) {
+                $key = Keyphrase::where('text', $value)->first();
+                $end_cal[] = [
+                    "id" => $key->id,
+                    "keyphrase" => $value,
+                    "num" => 0,
+                    "weight" => 0,
+                    "all_weight" => [],
+                    "tf" => 0.5,
+                    "ip" => 0.5,
                 ];
             }
 
